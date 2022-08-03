@@ -1,48 +1,49 @@
 import { getKnex } from '../knex';
 
-const calcularIndiceTR = function(dtInicial, dtFinal) {
+const calcularIndiceTR = async function(dtInicial, dtFinal) {
 
     const dataInicial = new Date(dtInicial);
     const dataFinal = new Date(dtFinal);
-
-    if(dataInicial.getMonth == dataFinal.getMonth && dataInicial.getFullYear == dataFinal.getFullYear) {
-        return 1; //dentro do mesmo mês não tem atualização segundo calculadora bacen.
+    console.log("dataInicial", dataInicial);
+    console.log("dataFinal", dataFinal);
+    if(dataInicial.getMonth() == dataFinal.getMonth() && dataInicial.getFullYear() == dataFinal.getFullYear()) {
+        throw "Não é possível calcular o índice de taxa referencial com datas dentro do mesmo mês";
     }
 
     //algoritmo diferente para dtFinal > 28
     if(dataFinal.getUTCDate() > 28) {
-        var indicesPeriodo = recuperaIndicesAcimaDia28(dtInicial, dtFinal);
+        var indicesPeriodo = await calcularIndicesAcimaDia28(dtInicial, dtFinal);
     } else {
-        var indicesPeriodo = recuperaIndicesAteDia28(dtInicial, dtFinal);
+        var indicesPeriodo = await calcularIndicesAteDia28(dtInicial, dtFinal);
     }
-
+    
     //CALCULA APENAS PRO RATA
     if(indicesPeriodo.length == 0) {
-        const taxaProRata = calcularProRata(dataInicial);
+        const taxaProRata = await calcularProRata(dtInicial);
         if(taxaProRata == 1) { return 1; } //taxa pro rata 1 elevado a potencia dias uteis é sempre 1
 
-        const diasUteisPeriodoProRata = diasUteisNoPeriodoProRata(dataInicial, dataFinal);
-
+        const diasUteisPeriodoProRata = await diasUteisNoPeriodoProRata(dtInicial, dtFinal);
+        console.log("diasUteisPeriodoProRata", diasUteisPeriodoProRata);
         //RETORNA O ÍNDICE PRO RATA COM A TAXA PRO RATA ELEVADO A POTENCIA DE DIAS UTEIS NO PERÍODO PRO RATA
         return Math.pow(taxaProRata, diasUteisPeriodoProRata).toFixed(7);
     }
-
+    
     let dataInicialBase = indicesPeriodo[0].dt_efetiva;
     let indicePeriodo = calcularIndice(indicesPeriodo);
-
+    
     //se dia inicial e final for o mesmo, período é fechado e pode retornar o índice calculado.
     if(Math.floor( Math.abs(new Date(dataInicialBase)) - dataInicial ) / (1000*60*60*24) == 0) {
         return indicePeriodo.toFixed(7);
     }
     
-    let taxaProRata = calcularProRata(dataInicial);
-
+    let taxaProRata = await calcularProRata(dtInicial);
+    console.log("taxa pro rata", taxaProRata);
     //SE TAXA PRO RATA É 1 (SIGNIFICA QUE CORREÇÃO NO PERÍODO É 0) ENTÃO PODE RETORNAR ÍNDICE
     if(taxaProRata == 1) {
         return indicePeriodo.toFixed(7);
     }
-    let diasUteisPeriodoProRata = diasUteisNoPeriodoProRata(dataInicial, dataInicialBase);
-    
+    let diasUteisPeriodoProRata = await diasUteisNoPeriodoProRata(dtInicial, indicesPeriodo[0].dt_efetiva);
+    console.log("dias uteis periodo pro rata", diasUteisPeriodoProRata);
     //CALCULA O ÍNDICE PRO RATA COM A TAXA PRO RATA ELEVADO A POTENCIA DE DIAS UTEIS NO PERÍODO PRO RATA
     let indiceProRataPeriodo = Math.pow(taxaProRata, diasUteisPeriodoProRata);
 
@@ -51,7 +52,7 @@ const calcularIndiceTR = function(dtInicial, dtFinal) {
 
 const calcularIndice = function(indicesPeriodo) {
     var indice = 1;
-    indicesPeriodo.foreach(function(indiceMensal) {
+    indicesPeriodo.forEach(function(indiceMensal) {
         indice = indice * (1 + (indiceMensal.vr_taxa/100));
     });
     
@@ -62,18 +63,7 @@ const calcularIndicesAteDia28 = async function(dataInicial, dataFinal) {
 
     const knex = getKnex();
 
-    /**
-     * select * 
-        from tr
-    where 
-        dt_efetiva between '2022-06-01' and '2022-07-10'
-        and dt_fim <= '2022-07-10'
-        and strftime('%d', dt_efetiva) = strftime('%d', '2022-07-10')
-        and strftime('%d', dt_fim) = strftime('%d', '2022-07-10')
-    order by dt_efetiva asc
-     */
-
-    const taxas = await knex('tr')
+    const indicesPeriodo = await knex('tr')
         .select('dt_efetiva', 'dt_fim', 'vr_taxa')
         .whereBetween('dt_efetiva', [dataInicial, dataFinal])
         .where('dt_fim', '<=', dataFinal)
@@ -81,26 +71,14 @@ const calcularIndicesAteDia28 = async function(dataInicial, dataFinal) {
         .whereRaw("strftime('%d', dt_fim) = strftime('%d', ?)", dataFinal)
         .orderBy('dt_efetiva', 'asc');
 
-    return taxas;
+        console.log("indicesPeriodo", indicesPeriodo);
+
+    return indicesPeriodo;
 }
 
 const calcularIndicesAcimaDia28 = async function(dataInicial, dataFinal) {
 
     const knex = getKnex();
-
-    /**
-     * $indicesPeriodo = TaxaReferencial::selectRaw('*, 1 + (VR_TAXA / 100) as indice_correcao')
-                ->whereBetween('DT_EFETIVA', [$dtInicial, $dtFinal])
-                ->where('DT_FIM', '<=', $dtFinal)
-                ->where(function ($query) use ($dtFinal) {
-                    $query->where(DB::raw("DAY(DT_EFETIVA)"), DB::raw("DAY('{$dtFinal}')"))
-                        ->orWhere(DB::raw("DAY(DT_EFETIVA)"), DB::raw(01));
-                })->where(function ($query) use ($dtFinal) {
-                    $query->where(DB::raw("DAY(DT_FIM)"), DB::raw("DAY('{$dtFinal}')"))
-                        ->orWhere(DB::raw("DAY(DT_FIM)"), DB::raw(01));
-                })->orderBy('DT_EFETIVA', 'desc')
-                ->get();
-     */
 
     const indicesPeriodo = await knex('tr')
         .select('dt_efetiva', 'dt_fim', 'vr_taxa')
@@ -108,23 +86,25 @@ const calcularIndicesAcimaDia28 = async function(dataInicial, dataFinal) {
         .where('dt_fim', '<=', dataFinal)
         .where(function() {
             this.whereRaw("strftime('%d', dt_efetiva) = strftime('%d', ?)", dataFinal)
-                .orWhereRaw("strftime('%d', dt_efetiva) = strftime('%d', 01)");
+                .orWhereRaw("strftime('%d', dt_efetiva) = '01'");
         }).where(function(){
             this.whereRaw("strftime('%d', dt_fim) = strftime('%d', ?)", dataFinal)
-                .orWhereRaw("strftime('%d', dt_fim) = strftime('%d', 01)");
+                .orWhereRaw("strftime('%d', dt_fim) = '01'");
         })
         .orderBy('dt_efetiva', 'desc');
+
+        console.log("indicesPeriodo", indicesPeriodo);
 
         var indices = [];
         var acabou = false;
         var dataProcurada = new Date(dataFinal);
-        var diaProcurado = dataProcurada.getUTCDate();
-
+        const diaProcurado = dataProcurada.getUTCDate();
+        
         while(!acabou) {
             var proximosIndices = indicesPeriodo.filter(function(indice) {
-                return indice.dt_fim == dataFinal;
+                return indice.dt_fim == formatDate(dataProcurada);
             });
-
+            console.log("proximosIndices", proximosIndices);
             if(proximosIndices.length == 0) {
                 acabou = true;
                 continue;
@@ -146,7 +126,7 @@ const calcularIndicesAcimaDia28 = async function(dataInicial, dataFinal) {
                     throw "Erro no algoritmo de cálculo da TR com dtFim acima de 28/xx/xxxx";
                 }
             }
-            dataProcurada = proximoIndice[0].dt_efetiva;
+            dataProcurada = new Date(proximoIndice[0].dt_efetiva);
         }
         return indices.reverse();
 
@@ -154,8 +134,12 @@ const calcularIndicesAcimaDia28 = async function(dataInicial, dataFinal) {
 
     const calcularProRata = async function(dataInicial) {
         //no caso de periodo restante, procurar índice pro-rata relativo a data inicial
+        const knex = getKnex();
         const taxaProRata = await knex('tr_prorata')
-        .where('DT_EFETIVA', dataInicial);
+            .select('dt_efetiva', 'dt_fim', 'vr_taxa')
+            .where('dt_efetiva', dataInicial);
+
+        console.log("taxa pro_rata calculada", taxaProRata, "dataInicial", dataInicial);
 
         var taxaDesejada = taxaProRata[0];
 
@@ -169,9 +153,50 @@ const calcularIndicesAcimaDia28 = async function(dataInicial, dataFinal) {
         return 1 + (taxaDesejada.vr_taxa/100);
     }
 
-    const diasUteisNoPeriodoProRata = function(dataInicial, dataFinal) {
-
+    const diasUteisNoPeriodoProRata = async function(dataInicial, dataFinal) {
+        //CAPTURA FERIADOS NO PERÍODO
+        const knex = getKnex();
+        const feriados = await knex('feriados')
+            .select('dt_feriado')
+            .whereBetween('dt_feriado', [dataInicial, dataFinal]);
+        
+        const datasFeriados = feriados.map(feriado => feriado.dt_feriado);
+        console.log("datasFeriados", datasFeriados);
+        //RETORNA QUANTIDADE DIAS UTEIS DA DATA INICIAL ATÉ A DATA DO PRIMEIRO ÍNDICE (BASE)
+        //SE $dataFinal for fim de semana ou feriado, soma 1 dia
+        if(datasFeriados.includes(dataFinal) || new Date(dataFinal).getUTCDay() == 0 || new Date(dataFinal).getUTCDay() == 6) {
+            console.log('dataFinal é feriado ou fim de semana');
+            return calcularDiasUteis(dataInicial, dataFinal, datasFeriados);
+        } 
+        console.log('dataFinal nao é feriado ou fim de semana');
+        return calcularDiasUteis(dataInicial, dataFinal, datasFeriados) - 1;
     }
 
+    const calcularDiasUteis = function(dataInicial, dataFinal, feriados) {
+        const dtInicial = new Date(dataInicial);
+        const dtFinal = new Date(dataFinal);
+        console.log("dtInicial", dtInicial, "dtFinal", dtFinal);
+        var qtdDiasUteis = 0;
+        var dataAtual = new Date(dataInicial);
+        while (dataAtual <= dtFinal) {
+            // Skips Sunday and Saturday
+            var dataFormatada = formatDate(dataAtual);
+            if (dataAtual.getUTCDay() != 0 && dataAtual.getUTCDay() != 6 && !feriados.includes(dataFormatada)) {
+                qtdDiasUteis++;
+                //console.log('dia util: ' + dataFormatada, dataAtual.getUTCDay());
+            }
+            dataAtual.setDate(dataAtual.getDate() + 1);
+        }
+        return qtdDiasUteis;
+    }
 
-export { calcularIndiceTR };
+    const formatDate = (date) => {
+        let d = date;
+        let month = (d.getUTCMonth() + 1).toString().padStart(2, '0');
+        let day = d.getUTCDate().toString().padStart(2, '0');
+        let year = d.getFullYear();
+        return [year, month, day].join('-');
+      }
+
+
+export { calcularIndiceTR, calcularDiasUteis };

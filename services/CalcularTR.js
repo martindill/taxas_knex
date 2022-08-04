@@ -6,7 +6,7 @@ const calcularIndiceTR = async function(dtInicial, dtFinal) {
     const dataFinal = new Date(dtFinal);
     console.log("dataInicial", dataInicial);
     console.log("dataFinal", dataFinal);
-    if(dataInicial.getMonth() == dataFinal.getMonth() && dataInicial.getFullYear() == dataFinal.getFullYear()) {
+    if(dataInicial.getUTCMonth() == dataFinal.getUTCMonth() && dataInicial.getFullYear() == dataFinal.getFullYear()) {
         throw "Não é possível calcular o índice de taxa referencial com datas dentro do mesmo mês";
     }
 
@@ -25,7 +25,7 @@ const calcularIndiceTR = async function(dtInicial, dtFinal) {
         const diasUteisPeriodoProRata = await diasUteisNoPeriodoProRata(dtInicial, dtFinal);
         console.log("diasUteisPeriodoProRata", diasUteisPeriodoProRata);
         //RETORNA O ÍNDICE PRO RATA COM A TAXA PRO RATA ELEVADO A POTENCIA DE DIAS UTEIS NO PERÍODO PRO RATA
-        return Math.pow(taxaProRata, diasUteisPeriodoProRata).toFixed(7);
+        return (Math.pow(taxaProRata, diasUteisPeriodoProRata));
     }
     
     let dataInicialBase = indicesPeriodo[0].dt_efetiva;
@@ -33,21 +33,21 @@ const calcularIndiceTR = async function(dtInicial, dtFinal) {
     
     //se dia inicial e final for o mesmo, período é fechado e pode retornar o índice calculado.
     if(Math.floor( Math.abs(new Date(dataInicialBase)) - dataInicial ) / (1000*60*60*24) == 0) {
-        return indicePeriodo.toFixed(7);
+        return (indicePeriodo);
     }
     
     let taxaProRata = await calcularProRata(dtInicial);
     console.log("taxa pro rata", taxaProRata);
     //SE TAXA PRO RATA É 1 (SIGNIFICA QUE CORREÇÃO NO PERÍODO É 0) ENTÃO PODE RETORNAR ÍNDICE
     if(taxaProRata == 1) {
-        return indicePeriodo.toFixed(7);
+        return (indicePeriodo);
     }
     let diasUteisPeriodoProRata = await diasUteisNoPeriodoProRata(dtInicial, indicesPeriodo[0].dt_efetiva);
     console.log("dias uteis periodo pro rata", diasUteisPeriodoProRata);
     //CALCULA O ÍNDICE PRO RATA COM A TAXA PRO RATA ELEVADO A POTENCIA DE DIAS UTEIS NO PERÍODO PRO RATA
     let indiceProRataPeriodo = Math.pow(taxaProRata, diasUteisPeriodoProRata);
 
-    return (indicePeriodo * indiceProRataPeriodo).toFixed(7);
+    return ((indicePeriodo * indiceProRataPeriodo));
 }
 
 const calcularIndice = function(indicesPeriodo) {
@@ -197,6 +197,10 @@ const calcularIndicesAcimaDia28 = async function(dataInicial, dataFinal) {
         let year = d.getFullYear();
         return [year, month, day].join('-');
       }
+
+      const roundToSeven = function(num) {
+        return +(Math.round(num + "e+7")  + "e-7");
+    }
 
 
 export { calcularIndiceTR, calcularDiasUteis };

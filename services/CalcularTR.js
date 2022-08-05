@@ -1,4 +1,5 @@
 import { getKnex } from '../knex';
+import { round } from './Round';
 
 const calcularIndiceTR = async function(dtInicial, dtFinal) {
 
@@ -25,7 +26,7 @@ const calcularIndiceTR = async function(dtInicial, dtFinal) {
         const diasUteisPeriodoProRata = await diasUteisNoPeriodoProRata(dtInicial, dtFinal);
         console.log("diasUteisPeriodoProRata", diasUteisPeriodoProRata);
         //RETORNA O ÍNDICE PRO RATA COM A TAXA PRO RATA ELEVADO A POTENCIA DE DIAS UTEIS NO PERÍODO PRO RATA
-        return (Math.pow(taxaProRata, diasUteisPeriodoProRata));
+        return corrigirIndice(Math.pow(taxaProRata, diasUteisPeriodoProRata));
     }
     
     let dataInicialBase = indicesPeriodo[0].dt_efetiva;
@@ -33,21 +34,21 @@ const calcularIndiceTR = async function(dtInicial, dtFinal) {
     
     //se dia inicial e final for o mesmo, período é fechado e pode retornar o índice calculado.
     if(Math.floor( Math.abs(new Date(dataInicialBase)) - dataInicial ) / (1000*60*60*24) == 0) {
-        return (indicePeriodo);
+        return corrigirIndice(indicePeriodo);
     }
     
     let taxaProRata = await calcularProRata(dtInicial);
     console.log("taxa pro rata", taxaProRata);
     //SE TAXA PRO RATA É 1 (SIGNIFICA QUE CORREÇÃO NO PERÍODO É 0) ENTÃO PODE RETORNAR ÍNDICE
     if(taxaProRata == 1) {
-        return (indicePeriodo);
+        return corrigirIndice(indicePeriodo);
     }
     let diasUteisPeriodoProRata = await diasUteisNoPeriodoProRata(dtInicial, indicesPeriodo[0].dt_efetiva);
     console.log("dias uteis periodo pro rata", diasUteisPeriodoProRata);
     //CALCULA O ÍNDICE PRO RATA COM A TAXA PRO RATA ELEVADO A POTENCIA DE DIAS UTEIS NO PERÍODO PRO RATA
-    let indiceProRataPeriodo = Math.pow(taxaProRata, diasUteisPeriodoProRata);
+    let indiceProRataPeriodo = corrigirIndice(Math.pow(taxaProRata, diasUteisPeriodoProRata));
 
-    return ((indicePeriodo * indiceProRataPeriodo));
+    return corrigirIndice(indicePeriodo * indiceProRataPeriodo);
 }
 
 const calcularIndice = function(indicesPeriodo) {
@@ -58,6 +59,11 @@ const calcularIndice = function(indicesPeriodo) {
     
     return indice;
 }
+
+const corrigirIndice = function(indice) {
+    return round(indice, 7);
+}
+
 
 const calcularIndicesAteDia28 = async function(dataInicial, dataFinal) {
 
@@ -198,9 +204,7 @@ const calcularIndicesAcimaDia28 = async function(dataInicial, dataFinal) {
         return [year, month, day].join('-');
       }
 
-      const roundToSeven = function(num) {
-        return +(Math.round(num + "e+7")  + "e-7");
-    }
+    
 
 
 export { calcularIndiceTR, calcularDiasUteis };
